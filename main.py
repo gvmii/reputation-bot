@@ -26,6 +26,15 @@ cur = con.cursor()
 cooldowns = {}
 COOLDOWN_DURATION = timedelta(seconds=1800)
 
+# Define role IDs for reputation thresholds
+REPUTATION_ROLE_IDS = {
+    50: 1278624804982755339,  # Example role ID for reputation >= 50
+    -50: 1278624914559209525,  # Example role ID for reputation <= -50
+}
+
+# Define role IDs that bypass the cooldown
+BYPASS_COOLDOWN_ROLES = [1144375743183339642]
+
 
 @bot.event
 async def on_ready():
@@ -39,7 +48,6 @@ async def get_reppower(ctx, user_id: int):
     LVL_30_ID = 1100091149772922910
     LVL_40_ID = 1100091073759547422
     LVL_50_ID = 1154927585512407140
-
     TEST_ID = 1178025421363761322
 
     # Fetch the current reppower from the database
@@ -47,14 +55,12 @@ async def get_reppower(ctx, user_id: int):
     result = cur.fetchone()
 
     if result is None:
-        # Handle case where the user is not found in the database
         return None
 
     current_reppower = result[0]
     guild = ctx.guild
     member = guild.get_member(user_id)
 
-    # Determine new reppower based on roles
     new_reppower = current_reppower
     if nextcord.utils.get(member.roles, id=DIVINIDAD_ID) or nextcord.utils.get(
         member.roles, id=LVL_50_ID
@@ -71,7 +77,6 @@ async def get_reppower(ctx, user_id: int):
     elif nextcord.utils.get(member.roles, id=TEST_ID):
         new_reppower = 3
 
-    # Update the database if the reppower has changed
     if new_reppower != current_reppower:
         cur.execute(
             """
@@ -105,8 +110,22 @@ async def create_user(user_id: int):
     con.commit()
 
 
-async def check_cooldown(user_id: int) -> Optional[float]:
+async def check_cooldown(user_id: int, guild: nextcord.Guild) -> Optional[float]:
     now = datetime.now()
+
+    # Get member object
+    member = guild.get_member(user_id)
+    if member is None:
+        return None
+
+    # Check if the user has any of the bypass roles
+    if any(
+        nextcord.utils.get(member.roles, id=role_id)
+        for role_id in BYPASS_COOLDOWN_ROLES
+    ):
+        return None  # Bypass cooldown
+
+    # Check cooldown for users without bypass roles
     if user_id in cooldowns:
         last_used = cooldowns[user_id]
         if now < last_used + COOLDOWN_DURATION:
@@ -119,12 +138,35 @@ async def update_cooldown(user_id: int):
     cooldowns[user_id] = datetime.now()
 
 
+async def update_roles(member: nextcord.Member, reputation: int):
+    guild = member.guild
+
+    # Remove all roles associated with reputation levels
+    for role_id in REPUTATION_ROLE_IDS.values():
+        role = guild.get_role(role_id)
+        if role in member.roles:
+            await member.remove_roles(role)
+
+    # Add role based on the reputation
+    if reputation >= 50:
+        role_id = REPUTATION_ROLE_IDS[50]
+    elif reputation <= -50:
+        role_id = REPUTATION_ROLE_IDS[-50]
+    else:
+        role_id = None
+
+    if role_id:
+        role = guild.get_role(role_id)
+        if role:
+            await member.add_roles(role)
+
+
 @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
 async def masrep(ctx, user: nextcord.Member):
     user_id = ctx.user.id
     tagged_user_id = user.id
 
-    remaining_cooldown = await check_cooldown(user_id)
+    remaining_cooldown = await check_cooldown(user_id, ctx.guild)
     if remaining_cooldown is not None:
         await ctx.send(
             f"¡Estás en cooldown! Intenta de nuevo en {remaining_cooldown:.2f} segundos."
@@ -169,6 +211,18 @@ async def masrep(ctx, user: nextcord.Member):
     )
 
     con.commit()
+
+    # Update roles for the tagged user
+    tagged_user = ctx.guild.get_member(tagged_user_id)
+    if tagged_user:
+        cur.execute(
+            "SELECT reputation FROM userrep WHERE user_id = ?", (tagged_user_id,)
+        )
+        reputation_result = cur.fetchone()
+        if reputation_result:
+            reputation = reputation_result[0]
+            await update_roles(tagged_user, reputation)
+
     await ctx.send(f"{ctx.user.mention} dio {reppower} +rep a {user.mention}!")
 
 
@@ -177,7 +231,7 @@ async def menosrep(ctx, user: nextcord.Member):
     tagged_user_id = user.id
     author_user_id = ctx.user.id
 
-    remaining_cooldown = await check_cooldown(author_user_id)
+    remaining_cooldown = await check_cooldown(author_user_id, ctx.guild)
     if remaining_cooldown is not None:
         await ctx.send(
             f"¡Estás en cooldown! Intenta de nuevo en {remaining_cooldown:.2f} segundos."
@@ -222,6 +276,18 @@ async def menosrep(ctx, user: nextcord.Member):
     )
 
     con.commit()
+
+    # Update roles for the tagged user
+    tagged_user = ctx.guild.get_member(tagged_user_id)
+    if tagged_user:
+        cur.execute(
+            "SELECT reputation FROM userrep WHERE user_id = ?", (tagged_user_id,)
+        )
+        reputation_result = cur.fetchone()
+        if reputation_result:
+            reputation = reputation_result[0]
+            await update_roles(tagged_user, reputation)
+
     await ctx.send(f"{ctx.user.mention} dio {reppower} -rep a {user.mention}!")
 
 
@@ -255,6 +321,38 @@ async def rep_stats(
     embed.add_field(name="Veces que recibió rep negativa", value=neg_rep, inline=True)
     embed.add_field(name="Veces que ha dado rep", value=rep_given, inline=True)
     embed.set_footer(text="Creado por @megvmi")
+    await ctx.send(embed=embed)
+
+
+@bot.slash_command(guild_ids=[TESTING_GUILD_ID])
+async def leaderboard(ctx):
+    # Query to get the top 10 users by reputation
+    cur.execute(
+        """
+        SELECT user_id, reputation
+        FROM userrep
+        ORDER BY reputation DESC
+        LIMIT 10
+        """
+    )
+    results = cur.fetchall()
+
+    if not results:
+        await ctx.send("No hay usuarios en el ranking.")
+        return
+
+    # Create the embed for the leaderboard
+    embed = nextcord.Embed(title="Leaderboard de Reputación", color=0x00FF00)
+
+    # Iterate through the results and add fields to the embed
+    for index, (user_id, reputation) in enumerate(results, start=1):
+        user = ctx.guild.get_member(user_id)
+        username = user.name if user else "Usuario no encontrado"
+        embed.add_field(
+            name=f"{index}. {username}", value=f"Reputación: {reputation}", inline=False
+        )
+
+    embed.set_footer(text="Ranking actualizado en tiempo real")
     await ctx.send(embed=embed)
 
 
