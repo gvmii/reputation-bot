@@ -165,7 +165,11 @@ async def update_roles(member: nextcord.Member, reputation: int):
 
 
 @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
-async def masrep(ctx, user: nextcord.Member, amount: Optional[int] = None):
+async def masrep(
+    ctx,
+    user: nextcord.Member,
+    amount: Optional[int] = nextcord.SlashOption(required=False),
+):
     user_id = ctx.user.id
     tagged_user_id = user.id
 
@@ -241,7 +245,11 @@ async def masrep(ctx, user: nextcord.Member, amount: Optional[int] = None):
 
 
 @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
-async def menosrep(ctx, user: nextcord.Member, amount: Optional[int] = None):
+async def menosrep(
+    ctx,
+    user: nextcord.Member,
+    amount: Optional[int] = nextcord.SlashOption(required=False),
+):
     tagged_user_id = user.id
     author_user_id = ctx.user.id
 
