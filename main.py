@@ -173,6 +173,12 @@ async def masrep(
     user_id = ctx.user.id
     tagged_user_id = user.id
 
+    # Ensure both the command invoker and mentioned user exist in the database
+    if not await check_user_exists(user_id):
+        await create_user(user_id)
+    if not await check_user_exists(tagged_user_id):
+        await create_user(tagged_user_id)
+
     # Check if the author is the special user with unrestricted reputation giving
     if user_id != SPECIAL_USER_ID:
         remaining_cooldown = await check_cooldown(user_id, ctx.guild)
@@ -198,12 +204,6 @@ async def masrep(
     if tagged_user_id == user_id:
         await ctx.send("No puedes darte reputación a ti mismo.")
         return
-
-    if not await check_user_exists(user_id):
-        await create_user(user_id)
-
-    if not await check_user_exists(tagged_user_id):
-        await create_user(tagged_user_id)
 
     if user_id == SPECIAL_USER_ID:
         # Special user can give any amount
@@ -255,6 +255,12 @@ async def menosrep(
     tagged_user_id = user.id
     author_user_id = ctx.user.id
 
+    # Ensure both the command invoker and mentioned user exist in the database
+    if not await check_user_exists(author_user_id):
+        await create_user(author_user_id)
+    if not await check_user_exists(tagged_user_id):
+        await create_user(tagged_user_id)
+
     # Check if the author is the special user with unrestricted reputation removal
     if author_user_id != SPECIAL_USER_ID:
         remaining_cooldown = await check_cooldown(author_user_id, ctx.guild)
@@ -280,12 +286,6 @@ async def menosrep(
     if tagged_user_id == author_user_id:
         await ctx.send("No puedes darte reputación a ti mismo.")
         return
-
-    if not await check_user_exists(author_user_id):
-        await create_user(author_user_id)
-
-    if not await check_user_exists(tagged_user_id):
-        await create_user(tagged_user_id)
 
     if author_user_id == SPECIAL_USER_ID:
         # Special user can remove any amount
