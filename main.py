@@ -6,7 +6,7 @@ import os
 from typing import Optional
 from datetime import datetime, timedelta
 
-TESTING_GUILD_ID = 926231740069068801
+TESTING_GUILD_ID = 1084367607982993428
 intents = nextcord.Intents.default()
 intents.message_content = True
 intents.members = True
