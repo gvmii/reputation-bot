@@ -327,5 +327,41 @@ async def menosrep(
 
     await ctx.send(f"{ctx.user.mention} dio {amount} -rep a {user.mention}!")
 
+    @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
+    async def rep_stats(
+        ctx, user: Optional[nextcord.Member] = nextcord.SlashOption(required=False)
+    ):
+        if user is None:
+            user = ctx.user
+
+        if not await check_user_exists(user.id):
+            await create_user(user.id)
+
+        await get_reppower(ctx, user.id)
+        cur.execute(
+            """
+        SELECT reputation, reppower, pos_rep, neg_rep, rep_given
+        FROM userrep
+        WHERE user_id = ?
+        """,
+            (user.id,),
+        )
+        result = cur.fetchone()
+
+        reputation, reppower, pos_rep, neg_rep, rep_given = result
+
+        embed = nextcord.Embed(title=f"Reputación de {user.name}", color=0xEC0006)
+        embed.add_field(name="Reputación", value=reputation, inline=True)
+        embed.add_field(name="Poder de rep", value=reppower, inline=True)
+        embed.add_field(
+            name="Veces que recibió rep positiva", value=pos_rep, inline=True
+        )
+        embed.add_field(
+            name="Veces que recibió rep negativa", value=neg_rep, inline=True
+        )
+        embed.add_field(name="Veces que ha dado rep", value=rep_given, inline=True)
+        embed.set_footer(text="Creado por @megvmi")
+        await ctx.send(embed=embed)
+
 
 bot.run(os.getenv("TOKEN"))
