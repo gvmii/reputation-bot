@@ -165,7 +165,7 @@ async def update_roles(member: nextcord.Member, reputation: int):
 
 
 @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
-async def masrep(ctx, user: nextcord.Member, amount: Optional[int] = 1):
+async def masrep(ctx, user: nextcord.Member, amount: Optional[int] = None):
     user_id = ctx.user.id
     tagged_user_id = user.id
 
@@ -186,7 +186,7 @@ async def masrep(ctx, user: nextcord.Member, amount: Optional[int] = 1):
         if reppower is None:
             await ctx.send("Error al recuperar el poder de reputación.")
             return
-        if amount > reppower:
+        if amount is None or amount > reppower:
             amount = reppower
 
     if tagged_user_id == user_id:
@@ -241,7 +241,7 @@ async def masrep(ctx, user: nextcord.Member, amount: Optional[int] = 1):
 
 
 @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
-async def menosrep(ctx, user: nextcord.Member, amount: Optional[int] = 1):
+async def menosrep(ctx, user: nextcord.Member, amount: Optional[int] = None):
     tagged_user_id = user.id
     author_user_id = ctx.user.id
 
@@ -262,7 +262,7 @@ async def menosrep(ctx, user: nextcord.Member, amount: Optional[int] = 1):
         if reppower is None:
             await ctx.send("Error al recuperar el poder de reputación.")
             return
-        if amount > reppower:
+        if amount is None or amount > reppower:
             amount = reppower
 
     if tagged_user_id == author_user_id:
@@ -329,10 +329,10 @@ async def rep_stats(
     await get_reppower(ctx, user.id)
     cur.execute(
         """
-    SELECT reputation, reppower, pos_rep, neg_rep, rep_given
-    FROM userrep
-    WHERE user_id = ?
-    """,
+        SELECT reputation, reppower, pos_rep, neg_rep, rep_given
+        FROM userrep
+        WHERE user_id = ?
+        """,
         (user.id,),
     )
     result = cur.fetchone()
