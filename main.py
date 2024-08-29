@@ -361,4 +361,36 @@ async def rep_stats(
     await ctx.send(embed=embed)
 
 
+@bot.slash_command(guild_ids=[TESTING_GUILD_ID])
+async def leaderboard(ctx):
+    # Query to get the top 10 users by reputation
+    cur.execute(
+        """
+        SELECT user_id, reputation
+        FROM userrep
+        ORDER BY reputation DESC
+        LIMIT 10
+        """
+    )
+    results = cur.fetchall()
+
+    if not results:
+        await ctx.send("No hay usuarios en el ranking.")
+        return
+
+    # Create the embed for the leaderboard
+    embed = nextcord.Embed(title="Leaderboard de Reputación", color=0x00FF00)
+
+    # Iterate through the results and add fields to the embed
+    for index, (user_id, reputation) in enumerate(results, start=1):
+        user = ctx.guild.get_member(user_id)
+        username = user.name if user else "Usuario no encontrado"
+        embed.add_field(
+            name=f"{index}. {username}", value=f"Reputación: {reputation}", inline=False
+        )
+
+    embed.set_footer(text="Ranking actualizado en tiempo real")
+    await ctx.send(embed=embed)
+
+
 bot.run(os.getenv("TOKEN"))
