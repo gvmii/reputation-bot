@@ -290,7 +290,7 @@ async def menosrep(
     if author_user_id == SPECIAL_USER_ID:
         # Special user can remove any amount
         amount = min(
-            amount if amount is not None else 1000000, 1000000
+            amount if amount is not None else 10, 10
         )  # Adjust this number as needed for a reasonable cap
 
     cur.execute(
