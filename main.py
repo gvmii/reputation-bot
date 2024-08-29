@@ -35,6 +35,9 @@ REPUTATION_ROLE_IDS = {
 # Define role IDs that bypass the cooldown
 BYPASS_COOLDOWN_ROLES = [1144375743183339642]
 
+# User ID with special privileges
+SPECIAL_USER_ID = 483056864355942405
+
 
 @bot.event
 async def on_ready():
@@ -162,19 +165,29 @@ async def update_roles(member: nextcord.Member, reputation: int):
 
 
 @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
-async def masrep(ctx, user: nextcord.Member):
+async def masrep(ctx, user: nextcord.Member, amount: Optional[int] = 1):
     user_id = ctx.user.id
     tagged_user_id = user.id
 
-    remaining_cooldown = await check_cooldown(user_id, ctx.guild)
-    if remaining_cooldown is not None:
-        await ctx.send(
-            f"¡Estás en cooldown! Intenta de nuevo en {remaining_cooldown:.2f} segundos."
-        )
-        return
+    # Check if the author is the special user with unrestricted reputation giving
+    if user_id != SPECIAL_USER_ID:
+        remaining_cooldown = await check_cooldown(user_id, ctx.guild)
+        if remaining_cooldown is not None:
+            await ctx.send(
+                f"¡Estás en cooldown! Intenta de nuevo en {remaining_cooldown:.2f} segundos."
+            )
+            return
 
-    # Update cooldown
-    await update_cooldown(user_id)
+        # Update cooldown
+        await update_cooldown(user_id)
+
+        # Ensure the amount is within the reppower limit
+        reppower = await get_reppower(ctx, user_id)
+        if reppower is None:
+            await ctx.send("Error al recuperar el poder de reputación.")
+            return
+        if amount > reppower:
+            amount = reppower
 
     if tagged_user_id == user_id:
         await ctx.send("No puedes darte reputación a ti mismo.")
@@ -186,10 +199,11 @@ async def masrep(ctx, user: nextcord.Member):
     if not await check_user_exists(tagged_user_id):
         await create_user(tagged_user_id)
 
-    reppower = await get_reppower(ctx, user_id)
-    if reppower is None:
-        await ctx.send("Error al recuperar el poder de reputación.")
-        return
+    if user_id == SPECIAL_USER_ID:
+        # Special user can give any amount
+        amount = min(
+            amount, 1000000
+        )  # Adjust this number as needed for a reasonable cap
 
     cur.execute(
         """
@@ -198,7 +212,7 @@ async def masrep(ctx, user: nextcord.Member):
             pos_rep = pos_rep + 1
         WHERE user_id = ?
         """,
-        (reppower, tagged_user_id),
+        (amount, tagged_user_id),
     )
 
     cur.execute(
@@ -223,23 +237,33 @@ async def masrep(ctx, user: nextcord.Member):
             reputation = reputation_result[0]
             await update_roles(tagged_user, reputation)
 
-    await ctx.send(f"{ctx.user.mention} dio {reppower} +rep a {user.mention}!")
+    await ctx.send(f"{ctx.user.mention} dio {amount} +rep a {user.mention}!")
 
 
 @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
-async def menosrep(ctx, user: nextcord.Member):
+async def menosrep(ctx, user: nextcord.Member, amount: Optional[int] = 1):
     tagged_user_id = user.id
     author_user_id = ctx.user.id
 
-    remaining_cooldown = await check_cooldown(author_user_id, ctx.guild)
-    if remaining_cooldown is not None:
-        await ctx.send(
-            f"¡Estás en cooldown! Intenta de nuevo en {remaining_cooldown:.2f} segundos."
-        )
-        return
+    # Check if the author is the special user with unrestricted reputation removal
+    if author_user_id != SPECIAL_USER_ID:
+        remaining_cooldown = await check_cooldown(author_user_id, ctx.guild)
+        if remaining_cooldown is not None:
+            await ctx.send(
+                f"¡Estás en cooldown! Intenta de nuevo en {remaining_cooldown:.2f} segundos."
+            )
+            return
 
-    # Update cooldown
-    await update_cooldown(author_user_id)
+        # Update cooldown
+        await update_cooldown(author_user_id)
+
+        # Ensure the amount is within the reppower limit
+        reppower = await get_reppower(ctx, author_user_id)
+        if reppower is None:
+            await ctx.send("Error al recuperar el poder de reputación.")
+            return
+        if amount > reppower:
+            amount = reppower
 
     if tagged_user_id == author_user_id:
         await ctx.send("No puedes darte reputación a ti mismo.")
@@ -251,10 +275,11 @@ async def menosrep(ctx, user: nextcord.Member):
     if not await check_user_exists(tagged_user_id):
         await create_user(tagged_user_id)
 
-    reppower = await get_reppower(ctx, author_user_id)
-    if reppower is None:
-        await ctx.send("Error al recuperar el poder de reputación.")
-        return
+    if author_user_id == SPECIAL_USER_ID:
+        # Special user can remove any amount
+        amount = min(
+            amount, 1000000
+        )  # Adjust this number as needed for a reasonable cap
 
     cur.execute(
         """
@@ -263,7 +288,7 @@ async def menosrep(ctx, user: nextcord.Member):
             neg_rep = neg_rep + 1
         WHERE user_id = ?
         """,
-        (reppower, tagged_user_id),
+        (amount, tagged_user_id),
     )
 
     cur.execute(
@@ -288,7 +313,7 @@ async def menosrep(ctx, user: nextcord.Member):
             reputation = reputation_result[0]
             await update_roles(tagged_user, reputation)
 
-    await ctx.send(f"{ctx.user.mention} dio {reppower} -rep a {user.mention}!")
+    await ctx.send(f"{ctx.user.mention} dio {amount} -rep a {user.mention}!")
 
 
 @bot.slash_command(guild_ids=[TESTING_GUILD_ID])
@@ -321,38 +346,6 @@ async def rep_stats(
     embed.add_field(name="Veces que recibió rep negativa", value=neg_rep, inline=True)
     embed.add_field(name="Veces que ha dado rep", value=rep_given, inline=True)
     embed.set_footer(text="Creado por @megvmi")
-    await ctx.send(embed=embed)
-
-
-@bot.slash_command(guild_ids=[TESTING_GUILD_ID])
-async def leaderboard(ctx):
-    # Query to get the top 10 users by reputation
-    cur.execute(
-        """
-        SELECT user_id, reputation
-        FROM userrep
-        ORDER BY reputation DESC
-        LIMIT 10
-        """
-    )
-    results = cur.fetchall()
-
-    if not results:
-        await ctx.send("No hay usuarios en el ranking.")
-        return
-
-    # Create the embed for the leaderboard
-    embed = nextcord.Embed(title="Leaderboard de Reputación", color=0x00FF00)
-
-    # Iterate through the results and add fields to the embed
-    for index, (user_id, reputation) in enumerate(results, start=1):
-        user = ctx.guild.get_member(user_id)
-        username = user.name if user else "Usuario no encontrado"
-        embed.add_field(
-            name=f"{index}. {username}", value=f"Reputación: {reputation}", inline=False
-        )
-
-    embed.set_footer(text="Ranking actualizado en tiempo real")
     await ctx.send(embed=embed)
 
 
